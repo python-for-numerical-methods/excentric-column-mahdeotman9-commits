@@ -1,0 +1,30 @@
+name: Autograding Tests
+'on':
+- push
+- repository_dispatch
+permissions:
+  checks: write
+  actions: read
+  contents: read
+jobs:
+  run-autograding-tests:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-classroom[bot]'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Pytest_Buckling
+      id: pytest_buckling
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: Pytest_Buckling
+        setup-command: pip install numpy scipy pytest
+        command: pytest test_buckling.py
+        timeout: 10
+        max-score: 100
+    - name: Autograding Reporter
+      uses: classroom-resources/autograding-grading-reporter@v1
+      env:
+        PYTEST_BUCKLING_RESULTS: "${{steps.pytest_buckling.outputs.result}}"
+      with:
+        runners: pytest_buckling
