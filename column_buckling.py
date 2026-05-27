@@ -1,5 +1,3 @@
-import numpy as np
-
 def find_critical_load(L, E, A, r, c, e, sigma_allow):
     """
     L: אורך במ"מ
