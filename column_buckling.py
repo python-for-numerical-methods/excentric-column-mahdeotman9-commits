@@ -38,4 +38,4 @@ def find_critical_load(L, E, A, r, c, e, sigma_allow):
     # הדיוק כברירת מחדל ב-bisect הוא גבוה מאוד (מעל ומעבר ל-10^-3 הנדרש)
     P_critical = bisect(f, p_min, p_max)
     
-    return float(P_critical
+    return float(P_critical)
