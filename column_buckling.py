@@ -23,9 +23,19 @@ def find_critical_load(L, E, A, r, c, e, sigma_allow):
     # This function takes only P as a variable, with other parameters fixed.
     objective_function = lambda P_val: column_stress_error_assignment(P_val, L, E, A, r, c, e, sigma_allow)
 
-    # Initial guess for Newton's method. This is crucial for convergence.
-    # Based on examples, 500,000 N seems like a reasonable starting point for many cases.
-    initial_guess_P = 500000.0
+    # Calculate Euler buckling load (P_euler) for an ideal column.
+    # P_euler = (pi^2 * E * I) / L^2, where I = A * r^2
+    # This serves as a theoretical upper bound for the critical load.
+    P_euler = (np.pi**2 * E * A * r**2) / (L**2)
+
+    # Initial guess for Newton's method.
+    # A common approach is to use a value slightly less than the Euler buckling load,
+    # as the critical load for eccentric loading will generally be lower than P_euler.
+    initial_guess_P = P_euler * 0.8
+
+    # Ensure the initial guess is positive. Fallback to a small positive value if P_euler is non-positive or very small.
+    if initial_guess_P <= 0:
+        initial_guess_P = 1.0
 
     try:
         # Attempt to use Newton-Raphson method for faster convergence.
@@ -34,20 +44,31 @@ def find_critical_load(L, E, A, r, c, e, sigma_allow):
         # If Newton's method fails to converge, fall back to the more robust Bisection method.
         # Bisection requires an interval [a, b] where f(a) and f(b) have opposite signs.
 
-        # We know objective_function(0) = -sigma_allow (assuming sigma_allow > 0),
-        # so the lower bound 'a' can be 0.
+        # Lower bound 'a' can be 0 (load cannot be negative for this problem).
         a = 0.0
 
-        # Find an upper bound 'b' where the objective_function returns a positive value.
-        # Start with the initial_guess_P and double it until f(b) > 0 or a very large limit is reached.
-        b = initial_guess_P
-        # Ensure the lower bound is actually lower than the upper bound.
-        # If initial_guess_P leads to a positive error, we need to adjust b down.
-        # However, it's more common for a first guess to be too low or result in a negative error.
+        # Upper bound 'b' is set generously above P_euler to ensure it brackets the root.
+        # The true critical load for the secant formula is always less than or equal to P_euler,
+        # but giving a slightly larger range ensures robustness in edge cases or numerical inaccuracies.
+        b = P_euler * 1.5 # Start with 150% of Euler load as a generous upper bound for bisection
+
+        # Verify that objective_function(a) is negative and objective_function(b) is positive
+        # for bisection to work. objective_function(0) should be -sigma_allow (if sigma_allow > 0).
+        if objective_function(a) >= 0 and sigma_allow > 0:
+             raise ValueError("Lower bound 'a' for bisection does not result in negative stress error. Check parameters or function definition.")
+        elif sigma_allow <= 0:
+            # If allowable stress is non-positive, P=0 might already meet or exceed it.
+            # This case might need special handling or implies invalid input for structural design.
+            return 0.0
+
+        # Adjust 'b' dynamically if the initial upper bound is not high enough
+        # to make objective_function(b) positive. This can happen for very specific parameter combinations.
         while objective_function(b) <= 0:
             b *= 2
-            if b > 1e12:  # Prevent infinite loop in extreme cases
-                raise ValueError("Could not find an appropriate upper bound for bisection method.")
+            # Prevent infinite loop by setting a practical upper limit, e.g., 100 times Euler load
+            # or a very large absolute number (1e12).
+            if b > P_euler * 100 and b > 1e12:
+                raise ValueError("Could not find an appropriate upper bound for bisection method. Consider a wider range or different initial P.")
 
         # Perform bisection to find the root within the determined interval.
         P_critical = optimize.bisect(objective_function, a, b)
