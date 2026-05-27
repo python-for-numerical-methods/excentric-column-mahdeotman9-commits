@@ -1,55 +1,35 @@
 import numpy as np
-from scipy import optimize
 
-def find_critical_load(L, E, A, r, c, e, sigma_allow):
+def column_stress_error_assignment(P, L, E, A, r, c, e, sigma_allow):
     """
-    Calculates the critical load P for a column using the Secant Formula
-    and numerical root-finding methods (Newton-Raphson with bisection fallback).
-
-    Args:
-        L (float): Column length in mm.
-        E (float): Modulus of Elasticity in MPa.
-        A (float): Cross-sectional area in mm^2.
-        r (float): Radius of gyration in mm.
-        c (float): Distance from neutral axis to extreme fiber in mm.
-        e (float): Load eccentricity in mm.
-        sigma_allow (float): Allowable stress in MPa.
-
-    Returns:
-        float: The critical load P in Newtons.
+    Calculates the difference between the maximum stress from the secant formula
+    and the allowable stress, given a load P and column parameters.
+    This function is designed to be used with root-finding algorithms (e.g., scipy.optimize).
     """
+    # Ensure P is positive as it's under a square root. If P is non-positive,
+    # the stress is typically considered 0 or the formula breaks down.
+    if P <= 0:
+        return -sigma_allow  # Return a negative error to push P higher if sigma_allow > 0
 
-    # Create an objective function for the root-finding algorithm.
-    # This function takes only P as a variable, with other parameters fixed.
-    objective_function = lambda P_val: column_stress_error_assignment(P_val, L, E, A, r, c, e, sigma_allow)
+    # Calculate the argument for the cosine function
+    # Note: L, E, A, r, c, e are all parameters for the column.
+    # The term (P / (E * A)) must be non-negative. This is implicitly handled by P >= 0 check.
+    arg_sqrt = np.sqrt(P / (E * A))
+    cos_arg = (L / (2 * r)) * arg_sqrt
 
-    # Initial guess for Newton's method. This is crucial for convergence.
-    # Based on examples, 500,000 N seems like a reasonable starting point for many cases.
-    initial_guess_P = 500000.0
+    # Handle potential division by zero if cos_arg makes np.cos(cos_arg) very close to zero.
+    # This indicates a load near or exceeding the Euler buckling load, leading to infinite stress.
+    cos_val = np.cos(cos_arg)
+    if np.isclose(cos_val, 0):
+        # Return a very large positive number to indicate stress is far too high
+        # and that P is likely beyond a physically meaningful limit for the formula.
+        return 1e18
 
-    try:
-        # Attempt to use Newton-Raphson method for faster convergence.
-        P_critical = optimize.newton(objective_function, initial_guess_P)
-    except RuntimeError:
-        # If Newton's method fails to converge, fall back to the more robust Bisection method.
-        # Bisection requires an interval [a, b] where f(a) and f(b) have opposite signs.
+    sec_term = 1 / cos_val
 
-        # We know objective_function(0) = -sigma_allow (assuming sigma_allow > 0),
-        # so the lower bound 'a' can be 0.
-        a = 0.0
+    # Calculate the maximum stress using the Secant Formula
+    sigma_max = (P / A) * (1 + (e * c / r**2) * sec_term)
+    
+    # Return the error (difference between calculated stress and allowable stress)
+    return sigma_max - sigma_allow
 
-        # Find an upper bound 'b' where the objective_function returns a positive value.
-        # Start with the initial_guess_P and double it until f(b) > 0 or a very large limit is reached.
-        b = initial_guess_P
-        # Ensure the lower bound is actually lower than the upper bound.
-        # If initial_guess_P leads to a positive error, we need to adjust b down.
-        # However, it's more common for a first guess to be too low or result in a negative error.
-        while objective_function(b) <= 0:
-            b *= 2
-            if b > 1e12:  # Prevent infinite loop in extreme cases
-                raise ValueError("Could not find an appropriate upper bound for bisection method.")
-
-        # Perform bisection to find the root within the determined interval.
-        P_critical = optimize.bisect(objective_function, a, b)
-
-    return P_critical
