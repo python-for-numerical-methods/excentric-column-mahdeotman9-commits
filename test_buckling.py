@@ -1,47 +1,55 @@
 import numpy as np
-from scipy.optimize import bisect
+from scipy import optimize
 
 def find_critical_load(L, E, A, r, c, e, sigma_allow):
     """
-    L: אורך במ"מ
-    E: מודול אלסטיות ב-MPa
-    A: שטח חתך בממ"ר
-    r: רדיוס אינרציה במ"מ
-    c: מרחק לסיב קיצוני במ"מ
-    e: אקסצנטריות במ"מ
-    sigma_allow: מאמץ מותר ב-MPa
-    
-    Return: העומס P בניוטון (float)
+    Calculates the critical load P for a column using the Secant Formula
+    and numerical root-finding methods (Newton-Raphson with bisection fallback).
+
+    Args:
+        L (float): Column length in mm.
+        E (float): Modulus of Elasticity in MPa.
+        A (float): Cross-sectional area in mm^2.
+        r (float): Radius of gyration in mm.
+        c (float): Distance from neutral axis to extreme fiber in mm.
+        e (float): Load eccentricity in mm.
+        sigma_allow (float): Allowable stress in MPa.
+
+    Returns:
+        float: The critical load P in Newtons.
     """
-    
-    def f(P):
-        if P <= 0:
-            return -sigma_allow
-        
-        # חישוב הארגומנט בתוך הקוסינוס
-        angle = (L / (2 * r)) * np.sqrt(P / (E * A))
-        
-        # הגנה הנדסית: אם הזווית מתקרבת או עוברת את פאי חלקי 2, 
-        # המשמעות היא שהעמוד עבר את נקודת הקריסה התיאורטית שלו.
-        if angle >= np.pi / 2:
-            return 1e10  # החזרת ערך חיובי גבוה מאוד כדי ששיטת החצייה תדע לרדת בעומס
-            
-        cos_val = np.cos(angle)
-        
-        # חישוב המאמץ המקסימלי לפי נוסחת הסקנט
-        sigma_max = (P / A) * (1 + (e * c / r**2) * (1.0 / cos_val))
-        
-        return sigma_max - sigma_allow
 
-    # חישוב מדויק של העומס שמאפס את הקוסינוס (הגבול הפיזיקלי העליון המוחלט)
-    # angle = pi/2 => (L / 2r) * sqrt(P / EA) = pi/2 => sqrt(P / EA) = pi * r / L
-    p_upper_bound = E * A * (np.pi * r / L)**2
-    
-    # נקבע חסמים בטוחים לשיטת החצייה
-    p_min = 0.0
-    p_max = 0.9999 * p_upper_bound
+    # Create an objective function for the root-finding algorithm.
+    # This function takes only P as a variable, with other parameters fixed.
+    objective_function = lambda P_val: column_stress_error_assignment(P_val, L, E, A, r, c, e, sigma_allow)
 
-    # הרצת שיטת החצייה בדיוק גבוה
-    p_critical = bisect(f, p_min, p_max, xtol=1e-5)
-    
-    return float(p_critical)
+    # Initial guess for Newton's method. This is crucial for convergence.
+    # Based on examples, 500,000 N seems like a reasonable starting point for many cases.
+    initial_guess_P = 500000.0
+
+    try:
+        # Attempt to use Newton-Raphson method for faster convergence.
+        P_critical = optimize.newton(objective_function, initial_guess_P)
+    except RuntimeError:
+        # If Newton's method fails to converge, fall back to the more robust Bisection method.
+        # Bisection requires an interval [a, b] where f(a) and f(b) have opposite signs.
+
+        # We know objective_function(0) = -sigma_allow (assuming sigma_allow > 0),
+        # so the lower bound 'a' can be 0.
+        a = 0.0
+
+        # Find an upper bound 'b' where the objective_function returns a positive value.
+        # Start with the initial_guess_P and double it until f(b) > 0 or a very large limit is reached.
+        b = initial_guess_P
+        # Ensure the lower bound is actually lower than the upper bound.
+        # If initial_guess_P leads to a positive error, we need to adjust b down.
+        # However, it's more common for a first guess to be too low or result in a negative error.
+        while objective_function(b) <= 0:
+            b *= 2
+            if b > 1e12:  # Prevent infinite loop in extreme cases
+                raise ValueError("Could not find an appropriate upper bound for bisection method.")
+
+        # Perform bisection to find the root within the determined interval.
+        P_critical = optimize.bisect(objective_function, a, b)
+
+    return P_critical
