@@ -1,6 +1,4 @@
-import numpy as np
-import pytest
-from column_buckling import find_critical_load
+
 
 def find_critical_load(L, E, A, r, c, e, sigma_allow):
     """
