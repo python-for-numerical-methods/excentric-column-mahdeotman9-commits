@@ -12,8 +12,7 @@ def find_critical_load(L, E, A, r, c, e, sigma_allow):
     sigma_allow: מאמץ מותר ב-MPa
 
     Return: העומס P בניוטון (float)
-    """
-    # כתבו כאן את הקוד
+    
 import numpy as np
 from scipy.optimize import bisect
 
