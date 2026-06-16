@@ -1,4 +1,3 @@
-%%writefile column_buckling.py
 import numpy as np
 from scipy import optimize
 
