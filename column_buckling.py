@@ -42,4 +42,3 @@ def find_critical_load(L, E, A, r, c, e, sigma_allow):
     P_critical = bisect(f, p_min, p_max)
     
     return float(P_critical)
-
